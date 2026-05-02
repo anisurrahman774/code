@@ -1,0 +1,87 @@
+import os
+import numpy as np
+import tensorflow as tf
+import random
+from sklearn.model_selection import train_test_split
+from collections import Counter
+from tensorflow.keras.preprocessing.image import img_to_array, load_img, ImageDataGenerator
+
+IMG_SIZE = (224, 224)
+TARGET_PER_CLASS = 1500  # 3x from 500 original images
+
+# 🏷 Class names
+class_names = sorted(os.listdir(data_dir))
+NUM_CLASSES = len(class_names)
+print("Classes:", class_names)
+
+# 🎛 Data Augmentation Setup
+aug_gen = ImageDataGenerator(
+    rotation_range=20,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    zoom_range=0.2,
+    shear_range=0.15,
+    horizontal_flip=True,
+    brightness_range=[0.8, 1.2],
+    fill_mode='nearest'
+)
+
+# 🖼 Load images and apply augmentation
+all_images = []
+all_labels = []
+
+for class_idx, class_name in enumerate(class_names):
+    class_path = os.path.join(data_dir, class_name)
+    img_names = os.listdir(class_path)
+    img_paths = [os.path.join(class_path, img) for img in img_names]
+
+    # Load original images
+    original_images = []
+    for img_path in img_paths:
+        img = load_img(img_path, target_size=IMG_SIZE)
+        img_array = img_to_array(img)
+        img_array = tf.keras.applications.mobilenet_v2.preprocess_input(img_array)
+        original_images.append(img_array)
+
+    # Add original images
+    all_images.extend(original_images)
+    all_labels.extend([class_idx] * len(original_images))
+
+    # Number of augmented images to generate
+    num_to_generate = TARGET_PER_CLASS - len(original_images)
+    print(f"{class_name}: Generating {num_to_generate} augmented images")
+
+    i = 0
+    while i < num_to_generate:
+        img = random.choice(original_images)
+        img = np.expand_dims(img, axis=0)
+        for batch in aug_gen.flow(img, batch_size=1):
+            all_images.append(batch[0])
+            all_labels.append(class_idx)
+            i += 1
+            if i >= num_to_generate:
+                break
+
+# 🔀 Final dataset
+X = np.array(all_images)
+y = np.array(all_labels)
+print(f"\n✅ Total images after augmentation: {X.shape[0]}")
+print("Class distribution:", Counter(y))
+
+# 🔀 Split: 15% test, then 15% val, rest train
+X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.15, stratify=y, random_state=42)
+X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.1765, stratify=y_temp, random_state=42)
+
+# 📦 TF Datasets
+def create_dataset(X, y):
+    return tf.data.Dataset.from_tensor_slices((X, tf.one_hot(y, depth=NUM_CLASSES)))
+
+train_ds = create_dataset(X_train, y_train).shuffle(1000).batch(BATCH_SIZE)
+val_ds = create_dataset(X_val, y_val).batch(BATCH_SIZE)
+test_ds = create_dataset(X_test, y_test).batch(BATCH_SIZE)
+
+# 🧾 Summary
+print("\n✅ Final dataset shapes:")
+print("Train:", X_train.shape, " | ", Counter(y_train))
+print("Val  :", X_val.shape, " | ", Counter(y_val))
+print("Test :", X_test.shape, " | ", Counter(y_test))
