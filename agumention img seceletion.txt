@@ -1,0 +1,80 @@
+import cv2
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+
+# ✅ ড্রাইভের মেইন পাথ (আপনার পাথ অনুযায়ী পরিবর্তন করুন)
+base_path = '/content/drive/MyDrive/Bottle_Gourd_agu'
+
+# ✅ ইউজার এখানে তার পছন্দমতো ক্লাসের নাম দিতে পারবেন
+# আপনি চাইলে ৩টি বা সবকটি (৮টি) ক্লাসের নাম এখানে দিতে পারেন
+target_classes = ['Alternaria_Leaf_Blight', 'Angular_Leaf_spot', 'Anthracnose']
+
+# 🔧 অগমেন্টেশন ফাংশনসমূহ (পেপারের প্যারামিটার অনুযায়ী)
+def get_augmentations(img_rgb):
+    # ১. Resized (224x224)
+    resized = cv2.resize(img_rgb, (224, 224))
+    
+    # ২. Rotated (+30 degree)
+    (h, w) = resized.shape[:2]
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, 30, 1.0)
+    rotated = cv2.warpAffine(resized, M, (w, h))
+    
+    # ৩. Flipped (Horizontal)
+    flipped = cv2.flip(resized, 1)
+    
+    # ৪. Brightness (1.3 factor)
+    brightness = cv2.convertScaleAbs(resized, alpha=1.3, beta=10)
+    
+    return [img_rgb, resized, rotated, flipped, brightness]
+
+# 🎨 গ্রিড তৈরি করা (Rows = target_classes এর সংখ্যা, Columns = 5)
+num_rows = len(target_classes)
+fig, axs = plt.subplots(num_rows, 5, figsize=(15, num_rows * 3))
+
+# যদি মাত্র একটি ক্লাস থাকে তবে axs ২-ডাইমেনশনাল হয় না, তাই এটি ফিক্স করা
+if num_rows == 1:
+    axs = np.expand_dims(axs, axis=0)
+
+for row_idx, class_name in enumerate(target_classes):
+    # ফোল্ডার থেকে ছবি খুঁজে বের করা
+    class_folder = os.path.join(base_path, class_name)
+    image_files = [f for f in os.listdir(class_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    
+    if not image_files:
+        print(f"❌ {class_name} ফোল্ডারে ছবি পাওয়া যায়নি!")
+        continue
+    
+    # প্রথম ছবিটি নেওয়া
+    img_path = os.path.join(class_folder, image_files[0])
+    img_bgr = cv2.imread(img_path)
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    
+    # অগমেন্টেড লিস্ট পাওয়া
+    aug_list = get_augmentations(img_rgb)
+    titles = ['Original (Raw)', 'Resized (224x224)', 'Rotated (Agm.)', 'Flipped (Agm.)', 'Brightness (Agm.)']
+    
+    for col_idx in range(5):
+        ax = axs[row_idx, col_idx]
+        ax.imshow(aug_list[col_idx])
+        ax.set_xticks([]); ax.set_yticks([]) # রুলার বন্ধ করা
+        
+        # শুধুমাত্র প্রথম সারির উপরে কলামের নাম দেওয়া
+        if row_idx == 0:
+            ax.set_title(titles[col_idx], fontsize=10, fontweight='bold', pad=10)
+
+    # বাম পাশে ক্লাসের নাম ফিক্স (ইমেজের বাইরে)
+    display_name = class_name.replace('_', ' ')
+    axs[row_idx, 0].set_ylabel(display_name, fontsize=9, fontweight='bold', 
+                               rotation=0, ha='right', va='center', labelpad=25)
+
+# গ্যাপ একদম কমিয়ে আনা (আপনার দেওয়া ডিজাইনের মতো)
+plt.subplots_adjust(wspace=0.05, hspace=0.1, left=0.2, right=0.98, top=0.95, bottom=0.05)
+
+# হাই-রেজোলিউশন পাবলিকেশন গ্রেড সেভ
+plt.savefig('Figure4_Augmentation_Visual.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+print("✅ Figure 4 (Augmentation Visual) সফলভাবে তৈরি হয়েছে।")
